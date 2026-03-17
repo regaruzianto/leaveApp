@@ -1,0 +1,505 @@
+openapi: 3.0.3
+info:
+  title: LeaveHub API
+  description: |
+    Leave Request Management System REST API.
+    
+    Authentication: Laravel Sanctum Personal Access Token.
+    Include token in header: `Authorization: Bearer {token}`
+  version: 1.0.0
+  contact:
+    name: LeaveHub Support
+
+servers:
+  - url: http://localhost:8000/api
+    description: Local development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Sanctum PAT
+
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: admin@energeek.id
+        password:
+          type: string
+          example: password123
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [admin, user]
+        balances:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaveBalance'
+
+    LeaveBalance:
+      type: object
+      properties:
+        leave_type_id:
+          type: integer
+        leave_type_name:
+          type: string
+        year:
+          type: integer
+        total_quota:
+          type: integer
+        used:
+          type: integer
+        remaining:
+          type: integer
+
+    LeaveRequest:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        user_name:
+          type: string
+        leave_type_id:
+          type: integer
+        leave_type_name:
+          type: string
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        total_days:
+          type: integer
+        reason:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected, cancelled]
+        admin_notes:
+          type: string
+          nullable: true
+        responded_by_name:
+          type: string
+          nullable: true
+        responded_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    ValidationError:
+      type: object
+      properties:
+        message:
+          type: string
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+
+paths:
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Login and get Sanctum token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      token:
+                        type: string
+                      user:
+                        $ref: '#/components/schemas/User'
+        '401':
+          description: Invalid credentials
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Logout and revoke current token
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Logout successful
+        '401':
+          description: Unauthenticated
+
+  /auth/me:
+    get:
+      tags: [Authentication]
+      summary: Get authenticated user profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthenticated
+
+  /leave-types:
+    get:
+      tags: [Leave Types]
+      summary: Get all leave types (for dropdown)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of leave types
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        default_quota:
+                          type: integer
+
+  /leave-balances:
+    get:
+      tags: [Leave Balances]
+      summary: Get authenticated user's leave balances for current year
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User leave balances and summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      year:
+                        type: integer
+                      balances:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/LeaveBalance'
+                      summary:
+                        type: object
+                        properties:
+                          pending:
+                            type: integer
+                          approved:
+                            type: integer
+                          rejected:
+                            type: integer
+
+  /leave-requests:
+    get:
+      tags: [Leave Requests]
+      summary: |
+        Get leave requests.
+        Admin: all requests. User: own requests only.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Leave requests split into pending and history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      pending:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/LeaveRequest'
+                      history:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/LeaveRequest'
+                      summary:
+                        type: object
+                        properties:
+                          pending:
+                            type: integer
+                          approved:
+                            type: integer
+                          rejected:
+                            type: integer
+
+    post:
+      tags: [Leave Requests]
+      summary: Submit a new leave request (User only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [leave_type_id, start_date, end_date, reason]
+              properties:
+                leave_type_id:
+                  type: integer
+                  example: 1
+                start_date:
+                  type: string
+                  format: date
+                  example: "2026-03-20"
+                end_date:
+                  type: string
+                  format: date
+                  example: "2026-03-22"
+                reason:
+                  type: string
+                  example: Liburan keluarga ke Malang
+      responses:
+        '201':
+          description: Leave request submitted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/LeaveRequest'
+        '422':
+          description: Validation error (quota exceeded, overlap, past date, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+
+  /leave-requests/{id}/cancel:
+    patch:
+      tags: [Leave Requests]
+      summary: Cancel a pending leave request (User only — own requests)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Request cancelled
+        '422':
+          description: Request is not in pending status
+
+  /leave-requests/{id}:
+    delete:
+      tags: [Leave Requests]
+      summary: Soft delete a leave request
+      description: |
+        Admin: can delete any final (approved/rejected/cancelled) request.
+        User: can only delete own cancelled or rejected requests.
+        Pending requests cannot be deleted — cancel first.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Request soft deleted
+        '422':
+          description: Cannot delete pending request or wrong status
+
+  /admin/users:
+    get:
+      tags: [Admin — Users]
+      summary: List all non-admin users with their balances
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User list with quota stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      users:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/User'
+                      total_users:
+                        type: integer
+                      max_users:
+                        type: integer
+                      slots_available:
+                        type: integer
+
+    post:
+      tags: [Admin — Users]
+      summary: Create a new user (max 2 users)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name:
+                  type: string
+                  example: Budi Santoso
+                email:
+                  type: string
+                  format: email
+                  example: budi@energeek.id
+                password:
+                  type: string
+                  minLength: 8
+                  example: password123
+      responses:
+        '201':
+          description: User created with auto-assigned leave balances
+        '422':
+          description: Validation error or user limit reached
+
+  /admin/users/{id}/password:
+    patch:
+      tags: [Admin — Users]
+      summary: Update a user's password
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+                  minLength: 8
+                  example: newpassword123
+      responses:
+        '200':
+          description: Password updated
+        '422':
+          description: Validation error
+
+  /admin/leave-requests/{id}/respond:
+    post:
+      tags: [Admin — Leave Requests]
+      summary: Approve or reject a pending leave request
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [approve, reject]
+                  example: approve
+                admin_notes:
+                  type: string
+                  nullable: true
+                  example: Selamat berlibur!
+      responses:
+        '200':
+          description: Request approved or rejected. Balance deducted if approved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/LeaveRequest'
+        '422':
+          description: Request is not pending or insufficient balance

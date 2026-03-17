@@ -1,0 +1,25 @@
+*.log
+node_modules/
+.env
+.DS_Store
+
+# File dan direktori yang diabaikan untuk proyek Laravel
+vendor/
+storage/*.key
+.env
+Homestead.yaml
+Homestead.ini
+public/hot
+public/wp-content
+public/system
+public/uploads
+bootstrap/cache/
+
+# File dan direktori yang diabaikan untuk proyek Vue.js
+dist/
+*.lock
+npm-debug.log
+yarn-error.log
+.nuxt/
+.node_modules/
+.dist/
